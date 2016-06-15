@@ -1,0 +1,859 @@
+
+#include "route.h"
+
+int node_size = 0;
+map<int,int> node_new_id;
+
+int edge_cnt = 0;
+struct edge edge_set[MAX_EDGE_NUM];
+
+vector<int> node_next[MAX_NODE_NUM];
+
+
+int get_node_id(int oldid)
+{
+	if(node_new_id.find(oldid) == node_new_id.end())
+	{
+		node_new_id.insert(MP(oldid, node_size));
+		return node_size++;
+	}
+	return node_new_id[oldid];
+}
+
+bool __cmp(int a,int b)
+{
+	return edge_set[a].cost < edge_set[b].cost;
+}
+
+int indeg[MAX_NODE_NUM] = {0};
+int outdeg[MAX_NODE_NUM] = {0};
+
+void read_topo(char *topo[5000])
+{
+   for(int i=0; i<5000; i++)
+   {
+	// cout << i << endl;
+	if(topo[i] == NULL)
+		break;
+	sscanf(topo[i], "%d,%d,%d,%d", &edge_set[edge_cnt].edge_id, &edge_set[edge_cnt].old_l, &edge_set[edge_cnt].old_r, &edge_set[edge_cnt].cost);
+		
+	//cout << edge_set[edge_cnt].edge_id << " "<<edge_set[edge_cnt].old_l << " " << edge_set[edge_cnt].old_r << " " << edge_set[edge_cnt].cost << endl;
+	
+	edge_set[edge_cnt].l =  get_node_id(edge_set[edge_cnt].old_l);
+	edge_set[edge_cnt].r =  get_node_id(edge_set[edge_cnt].old_r);
+	indeg[edge_set[edge_cnt].r] ++;
+	outdeg[edge_set[edge_cnt].l] ++;
+
+	//cout << edge_set[edge_cnt].edge_id << " " << edge_set[edge_cnt].l << " " << edge_set[edge_cnt].r << " " << edge_set[edge_cnt].cost << endl;
+	node_next[edge_set[edge_cnt].l].push_back(edge_cnt);
+	edge_cnt++;
+   }
+	//bool t_tag[MAX_NODE_NUM] = {0};
+	for(int i=0; i < node_size; i++)
+	{
+		sort(node_next[i].begin(),node_next[i].end(),__cmp);
+		vector<int> tmp;
+		for(int j=0;j<node_next[i].size();j++)
+		{
+			int k = 0;
+			for(k=0;k<j;k++)
+				if(edge_set[node_next[i][j]].r == edge_set[node_next[i][k]].r)
+					break;
+			if(k>=j)
+				tmp.push_back(node_next[i][j]);
+			
+		}
+		node_next[i] = tmp;	
+		//memset(t_tag,0,sizeof(t_tag));
+		//one_to_all(i,i,t_tag);
+		//for(int j=0;j<node_size;j++)
+		//	cout << " " << node_map[i][j] ;
+		//cout << endl;
+	}
+   cout << "get_node_id end total " << edge_cnt << " edges" << ", total " << node_size << " nodes" << endl;
+}
+
+int sid, eid;
+int must_node_cnt = 0;
+bool must_node[MAX_NODE_NUM] = {0};
+vector<int> must_list ;
+const int MAX_MUST_NUM = 55;
+int must_id[MAX_NODE_NUM];
+
+void read_must_node(char * tmp)
+{
+	int num = 0;
+	while(*tmp == '|')
+		tmp++;
+	if(*tmp)
+	{
+		while(*tmp<='9' && *tmp >= '0')
+		{
+			num = num*10 + *tmp-'0';
+			tmp++;
+	  	}
+		num = get_node_id(num);
+		must_node[num] = true;
+		must_list.push_back(num);		
+		must_node_cnt ++;		
+		cout << "must node: " << num << endl;
+	   	read_must_node(tmp);
+	}
+}
+
+void read_demand(char *demand)
+{
+	char tmp[2000];
+	cout << demand << endl;
+	sscanf(demand,"%d,%d,%s",&sid,&eid,tmp);
+	sid = get_node_id(sid);
+	eid = get_node_id(eid);
+	cout << "s->e : " << sid << "-" << eid << endl; 
+	//must_node[sid] = true;
+	//must_node[eid] = true;
+	must_list.push_back(eid);
+	read_must_node(tmp);
+	for(int i=0;i<must_list.size();i++)
+		must_id[must_list[i]] = i;
+	must_id[sid] = must_list.size();
+	must_id[eid] = must_list.size() + 1;		
+}
+
+
+int LIMIT_TIME = 19800;
+const int TIME_OUT = -1;
+const int FIND_SOLVE = 0;
+const int END_OUT = TIME_OUT;
+
+long start_time, end_time;
+
+long get_now_time()
+{
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	return tv.tv_sec*1000 + tv.tv_usec/1000;
+}
+
+bool is_timeout()
+{
+	end_time = get_now_time();
+	return (end_time - start_time) > LIMIT_TIME;
+}
+
+
+int ans[MAX_NODE_NUM];
+int ans_sum = 0;
+
+int good_ans[MAX_NODE_NUM];
+const int INF_COST = 2000000;
+int good_cost = INF_COST, good_sum = 0;
+
+void add_edge(int s, int e,int &t_len ,int t_ans[])
+{
+	for(int i=0;i<node_next[s].size();i++)
+		if(edge_set[node_next[s][i]].r == e)
+		{
+			t_ans[t_len++] = node_next[s][i];
+			return ;		
+		}
+	cout << "add_edge error" << endl;
+}
+
+
+int update_good(int load_len, int load[])
+{
+	int t_cost = 0;
+	for(int i=0;i<load_len;i++)
+	{
+		t_cost += edge_set[load[i]].cost;
+	}
+	//cout << t_cost << endl;
+	if(t_cost < good_cost)
+	{
+		good_cost = t_cost;
+		good_sum = load_len;
+		for(int i=0;i<good_sum;i++)
+			good_ans[i] = edge_set[load[i]].edge_id;
+	}
+	return t_cost;
+}
+
+int UPDATE_GOOD = 30;
+
+int update_ans(int load_len,int load[],bool flag = true)
+{
+	
+	int value = update_good(load_len,load);
+	if(value-30 > good_cost)
+		return 0;
+	int lll = 2;
+	do {
+		bool tag[MAX_NODE_NUM] = {0};
+		for(int i=0;i<load_len;i++)
+			tag[edge_set[load[i]].l] = tag[edge_set[load[i]].r] = true;
+		int u = sid;
+		int t_len = 0;
+		int t_ans[MAX_NODE_NUM];
+		for(int i=0;i<load_len;i++)
+		{
+			int v = edge_set[load[i]].r;
+			tag[v] = false;
+		
+			if(eid == v || must_node[v])
+			{
+
+				int last[MAX_NODE_NUM];
+				int w[MAX_NODE_NUM];
+				memset(last, -1, sizeof(last));
+				memset(w, -1, sizeof(w));
+				int que[MAX_NODE_NUM];
+				int front = 0;
+				int rear = 0;
+				w[u] = 0;
+				que[rear++] = u;
+
+				int que_tag[MAX_NODE_NUM] = {0};
+				que_tag[u] = true;
+
+				while(front != rear)
+				{
+			
+					int now_id = que[front++];
+					if(front == MAX_NODE_NUM)
+						front = 0;
+					for(int i=0; i<node_next[now_id].size(); i++)
+					{
+						int r_node = edge_set[node_next[now_id][i]].r;
+						if(tag[r_node])
+							continue;
+						if(w[r_node] == -1 || w[now_id] + edge_set[node_next[now_id][i]].cost < w[r_node])
+						{
+							w[r_node] = w[now_id] + edge_set[node_next[now_id][i]].cost;
+							last[r_node] = now_id;
+							if(!que_tag[r_node])
+							{
+								que_tag[r_node] = true;
+								que[rear++] = r_node;
+								if(rear==MAX_NODE_NUM)
+									rear = 0;
+							}
+						}
+					}
+					que_tag[now_id] = false;
+		
+				}
+		
+				if(w[v] == -1)
+					return -1;//error
+
+				int t_ans_sum = ans_sum;
+				vector<int> load_nodes;
+				load_nodes.push_back(v);
+				int tmp_id = v;
+
+				while(last[tmp_id] != -1)
+				{
+					tmp_id = last[tmp_id];
+					load_nodes.push_back(tmp_id);				
+				}
+				
+				reverse(load_nodes.begin(),load_nodes.end());
+				for(int i=0;i<load_nodes.size();i++)
+				{
+					if(i < load_nodes.size() - 1)
+					{
+						tag[load_nodes[i+1]] = true;
+						add_edge(load_nodes[i],load_nodes[i+1],t_len,t_ans);
+					}
+				}
+
+				u = v;
+			}
+		}
+	
+		int tmp_good = good_cost;
+		int tmp_ans = update_good(t_len,t_ans);
+		if(tmp_ans - 6 >= tmp_good || is_timeout())
+			return tmp_ans;
+	} while(lll--);
+}
+
+
+int find_cnt_up = 3;
+
+int g_last[MAX_MUST_NUM][MAX_NODE_NUM];
+int g_w[MAX_MUST_NUM][MAX_NODE_NUM];
+int g_dis[MAX_MUST_NUM][MAX_NODE_NUM];
+int g_que[MAX_MUST_NUM][MAX_NODE_NUM];
+
+
+// 起点开始搜索
+
+// 起点开始搜索
+int dfs(int id, bool inload[], int cnt, int &best_cost, bool flag = false)
+{
+	//cout << "dfs(" << id << "," << cnt << ")" << endl;
+	if(id == eid)
+	{
+		best_cost = update_ans(ans_sum,ans);
+		//update_good(ans_sum,ans);
+		return FIND_SOLVE;	
+	}
+	
+	if(is_timeout())
+	{
+		return TIME_OUT; // time out
+	}
+
+	// start bfs
+	
+	int (&last)[MAX_NODE_NUM] = g_last[cnt];
+	int (&w)[MAX_NODE_NUM] = g_w[cnt];
+	int (&dis)[MAX_NODE_NUM] = g_dis[cnt];
+	
+	for(int i=0;i<node_size;i++)
+	{
+		last[i] = w[i] = dis[i] = -1;
+	}	
+
+	int (&que)[MAX_NODE_NUM] = g_que[cnt];
+	int front = 0;
+	int rear = 0;
+	int find_cnt = 0;
+	int find_cnt_limit = find_cnt_up;
+	if(cnt == must_node_cnt)
+		find_cnt_limit = 3;	
+	else if(cnt > must_node_cnt - 2)
+		find_cnt_limit = 2;
+	if(cnt == 1)
+		find_cnt_limit = node_size*8;
+	w[id] = 0;
+	dis[id] = 0;
+	que[rear++] = id;
+	
+	// 只剩下最后一个节点 , spfa
+	if(cnt == 0)
+	{
+		int que_tag[MAX_NODE_NUM] = {0};
+		que_tag[id] = true;
+		while(front != rear)
+		{
+			
+			int now_id = que[front++];
+			if(front == MAX_NODE_NUM)
+				front = 0;
+			for(int i=0; i<node_next[now_id].size(); i++)
+			{
+				int r_node = edge_set[node_next[now_id][i]].r;
+				if(inload[r_node])
+					continue;
+				if(w[r_node] == -1 || w[now_id] + edge_set[node_next[now_id][i]].cost < w[r_node])
+				{
+					w[r_node] = w[now_id] + edge_set[node_next[now_id][i]].cost;
+					last[r_node] = now_id;
+					if(!que_tag[r_node])
+					{
+						que_tag[r_node] = true;
+						que[rear++] = r_node;
+						if(rear==MAX_NODE_NUM)
+							rear = 0;
+					}
+				}
+			}
+			que_tag[now_id] = false;
+		
+		}
+		
+		if(w[eid] == -1)
+			return cnt+1;
+
+		int t_ans_sum = ans_sum;
+		vector<int> load_nodes;
+		load_nodes.push_back(eid);
+		int tmp_id = eid;
+
+		while(last[tmp_id] != -1)
+		{
+			tmp_id = last[tmp_id];
+			load_nodes.push_back(tmp_id);				
+		}
+				
+		reverse(load_nodes.begin(),load_nodes.end());
+		for(int i=0;i<load_nodes.size();i++)
+		{
+			//inload[load_nodes[i]] = true;
+			if(i < load_nodes.size() - 1)
+			{
+				add_edge(load_nodes[i],load_nodes[i+1],ans_sum,ans);
+			}
+		}
+
+		best_cost = update_ans(ans_sum,ans);
+		//update_good(ans_sum,ans);
+
+		ans_sum =  t_ans_sum;
+				
+		return FIND_SOLVE;
+	}
+
+	int fin_res = cnt;
+	int t_best_cost = 2000000;
+	
+	while(front < rear && find_cnt < find_cnt_limit)
+	{
+
+		
+		if(cnt >= must_node_cnt - 5 && front > 0 && w[que[front]] != w[que[front-1]])
+		{
+			vector<pair<int,int> > pp;
+			for(int i=front;i<rear;i++)
+				pp.push_back(MP(dis[que[i]],que[i]));
+			sort(pp.begin(),pp.end());
+			for(int i=front;i<rear;i++)
+				que[i] = pp[i-front].second;
+		}
+	
+
+		int now_id = que[front++];
+		for(int i=0; i<node_next[now_id].size(); i++)
+		{
+			int r_node = edge_set[node_next[now_id][i]].r;
+			if(inload[r_node] || w[r_node] != -1)
+				continue;
+			
+			if(must_node[r_node] || (cnt == 0 && r_node == eid) )
+			{
+				int t_ans_sum = ans_sum;
+				//vector<int> load_nodes;
+				vector<int> edge_nodes;
+				//load_nodes.push_back(r_node);
+				//load_nodes.push_back(now_id);
+				edge_nodes.push_back(node_next[now_id][i]);
+				int tmp_id = now_id;
+
+				while(last[tmp_id] != -1)
+				{
+					tmp_id = last[tmp_id];
+					//load_nodes.push_back(tmp_id);				
+					edge_nodes.push_back(tmp_id);
+					tmp_id = edge_set[tmp_id].l;				
+				}
+				
+				reverse(edge_nodes.begin(),edge_nodes.end());
+				for(int i=0;i<edge_nodes.size();i++)
+				{
+					//inload[load_nodes[i]] = true;
+					inload[edge_set[edge_nodes[i]].r] = true;
+					/*					
+					if(i < load_nodes.size() - 1)
+					{
+						add_edge(load_nodes[i],load_nodes[i+1],ans_sum,ans);
+					}
+					*/
+					ans[ans_sum++] = edge_nodes[i];
+				}
+
+				find_cnt ++;
+				int t_t_best_cost = 2000000;
+				int res = dfs(r_node, inload, cnt - 1, t_t_best_cost, flag);
+				//find_cnt --;
+				t_best_cost = min(t_best_cost,t_t_best_cost);
+				best_cost = min(t_best_cost,best_cost);
+
+				ans_sum =  t_ans_sum;
+				
+				for(int i=0;i<edge_nodes.size();i++)
+				{
+					inload[edge_set[edge_nodes[i]].r] = false;
+				}
+				if(res == END_OUT)
+					return res;
+
+				fin_res = min(res, fin_res);
+				int min_l = 8;
+				int min_g = 8;
+				if(!flag)
+				{
+					if(good_cost < INF_COST)
+					{
+						min_l = 5;
+						min_g = 13;
+					}
+					//if(cnt > min_l && cnt < must_node_cnt - min_g)
+					//	return fin_res;
+//else if((cnt > min_l) && cnt < must_node_cnt - min_g + 3 && (fin_res > 0 || t_best_cost - 20 > good_cost))					
+//else 
+	if(cnt > min_l - 1 && cnt < must_node_cnt - min_g + 5 && (fin_res > 0 || t_t_best_cost - 3 > good_cost))
+						return fin_res;
+				}
+				else
+				{
+					min_l = 6;
+					min_g = 10;
+					if(must_node_cnt > 22)
+					{
+						min_l = 8;
+						min_g = 10;
+					}
+					if(good_cost < INF_COST)
+					{
+						if(node_size >= 300)
+						{				
+							min_l = 6;
+							min_g = 12;
+						}
+						else
+						{
+							min_l = 6;
+							min_g = 10;
+						}
+						if(must_node_cnt > 22)
+						{
+							min_l = 8;
+							min_g = 6;
+						}
+					}
+					//if(cnt > min_l && cnt < must_node_cnt - min_g )//&& t_best_cost > good_cost)
+					//	return fin_res;
+					//else
+					 if(cnt < must_node_cnt - min_g - 2 && (t_t_best_cost - 3  > good_cost || cnt > 0) )
+						return fin_res;
+				}
+				
+
+			} 
+			else 
+			{
+				w[r_node] = w[now_id] + 1;
+				dis[r_node] = dis[now_id] + edge_set[node_next[now_id][i]].cost;
+				//last[r_node] = now_id;
+				last[r_node] = node_next[now_id][i];
+				que[rear++] = r_node;
+			}
+			
+		}
+	}
+	return fin_res;
+
+}
+
+// 起点开始搜索
+int dfs_large(int id, bool inload[], int cnt, int &best_cost, bool flag = false)
+{
+	//cout << "dfs(" << id << "," << cnt << ")" << endl;
+	if(id == eid)
+	{
+		best_cost = update_ans(ans_sum,ans);
+		//update_good(ans_sum,ans);
+		return FIND_SOLVE;	
+	}
+	
+	if(is_timeout())
+	{
+		return TIME_OUT; // time out
+	}
+
+	// start bfs
+	
+	int (&last)[MAX_NODE_NUM] = g_last[cnt];
+	int (&w)[MAX_NODE_NUM] = g_w[cnt];
+	int (&dis)[MAX_NODE_NUM] = g_dis[cnt];
+	
+	for(int i=0;i<node_size;i++)
+	{
+		last[i] = w[i] = dis[i] = -1;
+	}	
+
+	int (&que)[MAX_NODE_NUM] = g_que[cnt];
+	int front = 0;
+	int rear = 0;
+	int find_cnt = 0;
+	int find_cnt_limit = find_cnt_up;
+	if(cnt == must_node_cnt)
+		find_cnt_limit = 3;
+	if(cnt == 1)
+		find_cnt_limit = node_size*8;
+	w[id] = 0;
+	dis[id] = 0;
+	que[rear++] = id;
+	
+	// 只剩下最后一个节点 , spfa
+	if(cnt == 0)
+	{
+		int que_tag[MAX_NODE_NUM] = {0};
+		que_tag[id] = true;
+		while(front != rear)
+		{
+			
+			int now_id = que[front++];
+			if(front == MAX_NODE_NUM)
+				front = 0;
+			for(int i=0; i<node_next[now_id].size(); i++)
+			{
+				int r_node = edge_set[node_next[now_id][i]].r;
+				if(inload[r_node])
+					continue;
+				if(w[r_node] == -1 || w[now_id] + edge_set[node_next[now_id][i]].cost < w[r_node])
+				{
+					w[r_node] = w[now_id] + edge_set[node_next[now_id][i]].cost;
+					last[r_node] = now_id;
+					if(!que_tag[r_node])
+					{
+						que_tag[r_node] = true;
+						que[rear++] = r_node;
+						if(rear==MAX_NODE_NUM)
+							rear = 0;
+					}
+				}
+			}
+			que_tag[now_id] = false;
+		
+		}
+		
+		if(w[eid] == -1)
+			return cnt+1;
+
+		int t_ans_sum = ans_sum;
+		vector<int> load_nodes;
+		load_nodes.push_back(eid);
+		int tmp_id = eid;
+
+		while(last[tmp_id] != -1)
+		{
+			tmp_id = last[tmp_id];
+			load_nodes.push_back(tmp_id);				
+		}
+				
+		reverse(load_nodes.begin(),load_nodes.end());
+		for(int i=0;i<load_nodes.size();i++)
+		{
+			//inload[load_nodes[i]] = true;
+			if(i < load_nodes.size() - 1)
+			{
+				add_edge(load_nodes[i],load_nodes[i+1],ans_sum,ans);
+			}
+		}
+
+		best_cost = update_ans(ans_sum,ans);
+		//update_good(ans_sum,ans);
+
+		ans_sum =  t_ans_sum;
+				
+		return FIND_SOLVE;
+	}
+
+	int fin_res = cnt;
+	int t_best_cost = 2000000;
+	
+	while(front < rear && find_cnt < find_cnt_limit)
+	{
+
+		
+		if(cnt >= must_node_cnt - 5 && front > 0 && w[que[front]] != w[que[front-1]])
+		{
+			vector<pair<int,int> > pp;
+			for(int i=front;i<rear;i++)
+				pp.push_back(MP(dis[que[i]],que[i]));
+			sort(pp.begin(),pp.end());
+			for(int i=front;i<rear;i++)
+				que[i] = pp[i-front].second;
+		}
+
+		int now_id = que[front++];
+		for(int i=0; i<node_next[now_id].size(); i++)
+		{
+			int r_node = edge_set[node_next[now_id][i]].r;
+			if(inload[r_node] || w[r_node] != -1)
+				continue;
+			
+			if(must_node[r_node] || (cnt == 0 && r_node == eid) )
+			{
+				int t_ans_sum = ans_sum;
+				//vector<int> load_nodes;
+				vector<int> edge_nodes;
+				//load_nodes.push_back(r_node);
+				//load_nodes.push_back(now_id);
+				edge_nodes.push_back(node_next[now_id][i]);
+				int tmp_id = now_id;
+
+				while(last[tmp_id] != -1)
+				{
+					tmp_id = last[tmp_id];
+					//load_nodes.push_back(tmp_id);				
+					edge_nodes.push_back(tmp_id);
+					tmp_id = edge_set[tmp_id].l;				
+				}
+				
+				reverse(edge_nodes.begin(),edge_nodes.end());
+				for(int i=0;i<edge_nodes.size();i++)
+				{
+					//inload[load_nodes[i]] = true;
+					inload[edge_set[edge_nodes[i]].r] = true;
+					/*					
+					if(i < load_nodes.size() - 1)
+					{
+						add_edge(load_nodes[i],load_nodes[i+1],ans_sum,ans);
+					}
+					*/
+					ans[ans_sum++] = edge_nodes[i];
+				}
+
+				find_cnt ++;
+				int t_t_best_cost = 2000000;
+				int res = dfs_large(r_node, inload, cnt - 1, t_t_best_cost, flag);
+				//find_cnt --;
+				t_best_cost = min(t_best_cost,t_t_best_cost);
+				best_cost = min(t_best_cost,best_cost);
+
+				ans_sum =  t_ans_sum;
+				
+				for(int i=0;i<edge_nodes.size();i++)
+				{
+					inload[edge_set[edge_nodes[i]].r] = false;
+				}
+				if(res == END_OUT)
+					return res;
+
+				fin_res = min(res, fin_res);
+				int min_l = 8;
+				int min_g = 8;
+				if(!flag)
+				{
+					if(good_cost < INF_COST)
+					{
+						min_l = 5;
+						min_g = 13;
+					}
+					if(cnt > min_l && cnt < must_node_cnt - min_g)
+						return fin_res;
+//else if((cnt > min_l) && cnt < must_node_cnt - min_g + 3 && (fin_res > 0 || t_best_cost - 20 > good_cost))					
+else if(cnt > min_l - 1 && cnt < must_node_cnt - min_g + 5 && (fin_res > 0 || t_best_cost - 3 > good_cost))
+						return fin_res;
+				}
+				else
+				{
+					min_l = 6;
+					min_g = 10;
+					if(must_node_cnt > 22)
+					{
+						min_l = 8;
+						min_g = 10;
+					}
+					if(good_cost < INF_COST)
+					{
+						if(node_size >= 300)
+						{				
+							min_l = 6;
+							min_g = 12;
+						}
+						else
+						{
+							min_l = 6;
+							min_g = 10;
+						}
+						if(must_node_cnt > 22)
+						{
+							min_l = 8;
+							min_g = 6;
+						}
+					}
+					if(cnt > min_l && cnt < must_node_cnt - min_g )//&& t_best_cost > good_cost)
+						return fin_res;
+					else if(cnt < must_node_cnt - min_g - 2 && (t_best_cost - 3  > good_cost || cnt > 0) )
+						return fin_res;
+				}
+				
+
+			} 
+			else 
+			{
+				w[r_node] = w[now_id] + 1;
+				dis[r_node] = dis[now_id] + edge_set[node_next[now_id][i]].cost;
+				//last[r_node] = now_id;
+				last[r_node] = node_next[now_id][i];
+				que[rear++] = r_node;
+			}
+			
+		}
+	}
+	return fin_res;
+
+}
+
+//你要完成的功能总入口
+void search_route(char *topo[5000], int edge_num, char *demand)
+{
+	
+	start_time = get_now_time();
+	read_topo(topo);
+	read_demand(demand);
+	
+	if((node_size<=100) || node_size > 500)
+	{
+		int tmp_up = find_cnt_up + 2;
+		bool flag = false;
+		
+		if(node_size<=500)
+		{
+			flag = true;
+		}
+		if(node_size <= 100) // 顶点小于100搜一次即可
+		{
+			find_cnt_up = 4;
+			tmp_up = find_cnt_up+1;
+		}
+		else if(must_node_cnt < 15)
+		{
+			tmp_up++;
+			find_cnt_up++;
+		}
+	
+		//if(node_size >= 200)
+		//	tmp_up += 5;
+	
+		cout << "flag:" << flag << endl; 
+	
+		while(find_cnt_up < tmp_up) //&& good_cost < last_cost)
+		{
+			//last_cost = good_cost;
+			bool tag[MAX_NODE_NUM] = {0};
+			int cnt = must_node_cnt;
+
+		 	tag[sid] = true;
+			int now_time = get_now_time();
+			int res,tb;
+			if(node_size>=100 && node_size<150) 
+				res = dfs(sid,tag,cnt,tb);		
+			else res = dfs_large(sid,tag,cnt,tb,flag);
+
+			if(res == END_OUT)
+				break;
+			cout << "find res : " << res << endl;	
+			find_cnt_up++;
+		}
+	}
+	else 
+	{
+		lp_solver(sid,eid,edge_cnt,edge_set,node_size,must_node,ans_sum,ans,node_next);
+		update_ans(ans_sum,ans);
+	}
+
+	//cout << ans_sum << endl;
+	cout << "route_len: " << good_sum << endl;
+	cout << "good_cost: " << good_cost << endl;
+
+	for (int i = 0; i < good_sum; i++)
+	{
+	      if (0 == i)
+			//cout << edge_set[ans[i]].edge_id;
+			cout << good_ans[i];
+	      else cout<< "|" << good_ans[i];
+	
+  	      record_result(edge_set[good_ans[i]].edge_id);
+	}
+	cout << endl;		
+	end_time = get_now_time();
+	cout << "used time : " << (end_time - start_time) << endl;
+
+}
+
